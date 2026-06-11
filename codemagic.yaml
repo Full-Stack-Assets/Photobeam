@@ -1,0 +1,79 @@
+# Codemagic workflow: builds the Capacitor iOS app on Codemagic's Macs,
+# signs it automatically via your App Store Connect API key, and uploads
+# to TestFlight. You never need a local Mac.
+#
+# One-time setup in Codemagic before this works:
+#   1. Teams → Integrations → App Store Connect → add your API key
+#      (.p8 file + Key ID + Issuer ID). Name it "photobeam-asc-key"
+#      or change the name below to match.
+#   2. Replace BUNDLE_ID and APP_APPLE_ID placeholders.
+#      APP_APPLE_ID is the numeric "Apple ID" shown on your app's
+#      App Information page in App Store Connect.
+
+workflows:
+  ios-testflight:
+    name: PhotoBeam → TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    integrations:
+      app_store_connect: photobeam-asc-key
+
+    environment:
+      vars:
+        BUNDLE_ID: com.yourname.photobeam
+        APP_APPLE_ID: 1234567890 # ← replace with your app's numeric Apple ID
+        XCODE_WORKSPACE: ios/App/App.xcworkspace
+        XCODE_SCHEME: App
+      node: 20
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.yourname.photobeam # ← keep in sync with BUNDLE_ID
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+
+    scripts:
+      - name: Install npm dependencies
+        script: npm ci
+
+      - name: Build web app
+        script: npm run build
+
+      - name: Sync Capacitor iOS project
+        script: npx cap sync ios
+
+      - name: Install CocoaPods dependencies
+        script: |
+          cd ios/App
+          pod install
+
+      - name: Bump build number from TestFlight
+        script: |
+          cd ios/App
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_APPLE_ID" || echo 0)
+          agvtool new-version -all $((LATEST + 1))
+
+      - name: Set up signing and build IPA
+        script: |
+          xcode-project use-profiles
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # When you're ready for a public release, uncomment:
+        # submit_to_app_store: true
