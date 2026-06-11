@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  /* App.jsx paints the real background; this prevents a white flash before
+     React mounts and behind the safe-area insets. */
+  background: #0a0c13;
+}
