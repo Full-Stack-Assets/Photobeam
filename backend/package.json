@@ -1,0 +1,10 @@
+{
+  "name": "photobeam-backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "OAuth token exchange + image proxy for PhotoBeam social import.",
+  "engines": {
+    "node": ">=18"
+  }
+}

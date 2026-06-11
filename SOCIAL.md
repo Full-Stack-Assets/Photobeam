@@ -16,6 +16,10 @@ Two things cannot be done safely or at all from inside the app:
    webview cannot read their bytes (canvas/`fetch` are blocked). The backend
    proxies the download and returns the image with permissive CORS.
 
+A ready-to-deploy implementation of both endpoints lives in **`backend/`**
+(zero-dependency Vercel serverless functions) — see `backend/README.md`. You
+just add the provider secrets as environment variables and deploy.
+
 The app talks to the backend through two endpoints.
 
 ### `POST /auth/:provider`
