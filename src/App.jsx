@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Tv, Check, Play, Pause, SkipBack, SkipForward, Shuffle, X,
-  Zap, Images, ChevronRight, Folder, FolderPlus,
+  Tv, Play, Pause, SkipBack, SkipForward, Shuffle, X,
+  Images, ChevronRight, Folder, FolderPlus,
   Pencil, Trash2, ArrowUp, ArrowDown, ImagePlus, Loader2,
+  Instagram, Facebook, Cloud, Image as ImageIcon, AlertCircle,
 } from "lucide-react";
 import { Camera } from "@capacitor/camera";
 import { loadState, saveMeta, saveImage } from "./storage";
+import AirPlay, { isAirPlaySupported } from "./native/airplay";
+import { importFromProvider, PROVIDERS, isProviderEnabled } from "./social";
 
 // ---------- tokens ----------
 const C = {
@@ -23,50 +26,12 @@ const C = {
 const BEAM = `linear-gradient(135deg, ${C.amber}, ${C.deep})`;
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
 
-// ---------- seed camera roll ----------
-const SEED_PHOTOS = [
-  { id: "s1", t: "Fushimi gates", e: "⛩️", g: ["#ff7e5f", "#feb47b"], grp: "Kyoto · April" },
-  { id: "s2", t: "Sakura path", e: "🌸", g: ["#fbc2eb", "#a18cd1"], grp: "Kyoto · April" },
-  { id: "s3", t: "Tea house", e: "🍵", g: ["#a8e063", "#3a7d44"], grp: "Kyoto · April" },
-  { id: "s4", t: "Gion lanterns", e: "🏮", g: ["#5f2c82", "#c94b4b"], grp: "Kyoto · April" },
-  { id: "s5", t: "Bamboo grove", e: "🎋", g: ["#11998e", "#38ef7d"], grp: "Kyoto · April" },
-  { id: "s6", t: "Fuji at dawn", e: "🗻", g: ["#3a6186", "#89253e"], grp: "Kyoto · April" },
-  { id: "s7", t: "Golden hour", e: "🌅", g: ["#ff9966", "#ff5e62"], grp: "Cape week" },
-  { id: "s8", t: "Big swell", e: "🌊", g: ["#2b5876", "#4e4376"], grp: "Cape week" },
-  { id: "s9", t: "Shell hunt", e: "🐚", g: ["#ffd1b6", "#ff9a8b"], grp: "Cape week" },
-  { id: "s10", t: "Sunset round", e: "🍹", g: ["#f857a6", "#ff5858"], grp: "Cape week" },
-  { id: "s11", t: "Miso, age 3", e: "🐕", g: ["#c79081", "#dfa579"], grp: "Miso" },
-  { id: "s12", t: "The good boy", e: "🦴", g: ["#636fa4", "#e8cbc0"], grp: "Miso" },
-  { id: "s13", t: "Fetch o'clock", e: "🎾", g: ["#56ab2f", "#a8e063"], grp: "Miso" },
-  { id: "s14", t: "Muddy paws", e: "🐾", g: ["#5d4157", "#a8caba"], grp: "Miso" },
-  { id: "s15", t: "Cacio e pepe", e: "🍝", g: ["#f2994a", "#f2c94c"], grp: "Nora's 30th" },
-  { id: "s16", t: "To us", e: "🥂", g: ["#41295a", "#9d4edd"], grp: "Nora's 30th" },
-  { id: "s17", t: "Candlelight", e: "🕯️", g: ["#2c3e50", "#fd746c"], grp: "Nora's 30th" },
-  { id: "s18", t: "Cake o'clock", e: "🎂", g: ["#ff758c", "#ff7eb3"], grp: "Nora's 30th" },
-  { id: "s19", t: "Skyline run", e: "🌃", g: ["#0f2027", "#2c5364"], grp: "City nights" },
-  { id: "s20", t: "Crosstown", e: "🚕", g: ["#ffe259", "#ffa751"], grp: "City nights" },
-  { id: "s21", t: "Pier lights", e: "🎡", g: ["#7f00ff", "#e100ff"], grp: "City nights" },
-  { id: "s22", t: "Fog bridge", e: "🌉", g: ["#536976", "#292e49"], grp: "City nights" },
-  { id: "s23", t: "Ridge line", e: "🏔️", g: ["#83a4d4", "#36648b"], grp: "Trailheads" },
-  { id: "s24", t: "Old growth", e: "🌲", g: ["#134e5e", "#71b280"], grp: "Trailheads" },
-  { id: "s25", t: "Basecamp", e: "⛺", g: ["#355c7d", "#6c5b7b"], grp: "Trailheads" },
-  { id: "s26", t: "Last embers", e: "🔥", g: ["#f12711", "#f5af19"], grp: "Trailheads" },
-];
-
-const SEED_ALBUMS = [
-  { id: "a1", name: "Kyoto, April", ids: ["s1", "s2", "s3", "s4", "s5", "s6"] },
-  { id: "a2", name: "Miso's greatest hits", ids: ["s11", "s13", "s12", "s14"] },
-];
-
-const TVS = [
-  { id: "lr", name: "Living Room", detail: "Apple TV 4K · 2 m", bars: 3 },
-  { id: "br", name: "Bedroom", detail: "Apple TV HD · 6 m", bars: 2 },
-  { id: "dn", name: "Den", detail: "Apple TV 4K · 9 m", bars: 1 },
-];
-const STEPS = [
-  "Found on your network",
-  "Proximity verified — same room",
-  "Paired. No password needed",
+// Photo sources offered by the import sheet. Native library is always on;
+// social providers appear only when configured + enabled in src/social/config.js.
+const SOCIAL_SOURCES = [
+  { key: "instagram", label: "Instagram", Icon: Instagram },
+  { key: "facebook", label: "Facebook", Icon: Facebook },
+  { key: "google", label: "Google Photos", Icon: Cloud },
 ];
 
 const CSS = `
@@ -165,21 +130,6 @@ function Thumb({ p, size = 48, active = false, onClick }) {
   );
 }
 
-// ---------- signal bars ----------
-function Bars({ n }) {
-  return (
-    <span className="flex items-end gap-0.5">
-      {[1, 2, 3].map((b) => (
-        <span
-          key={b}
-          className="w-1 rounded-sm"
-          style={{ height: 4 + b * 4, background: b <= n ? C.amber : "rgba(255,255,255,.15)" }}
-        />
-      ))}
-    </span>
-  );
-}
-
 // ---------- photo tile (library grid) ----------
 function Tile({ p, order, onTap }) {
   const picked = order > 0;
@@ -213,26 +163,40 @@ function Tile({ p, order, onTap }) {
   );
 }
 
-// ---------- beam sheet ----------
+// ---------- beam sheet (real AirPlay) ----------
 function BeamSheet({ source, onClose, onConnected }) {
-  const [tvs, setTvs] = useState([]);
-  const [conn, setConn] = useState(null);
-  const [step, setStep] = useState(0);
+  const supported = isAirPlaySupported();
+  const [error, setError] = useState(supported ? null : "AirPlay needs a real iPhone or iPad — it isn't available in the browser.");
+  const [waiting, setWaiting] = useState(false);
 
+  // Connect when a real external (AirPlay) screen attaches. Also catch the case
+  // where one is already connected (mirroring was on before opening the sheet).
   useEffect(() => {
-    const ts = TVS.map((tv, i) => setTimeout(() => setTvs((x) => [...x, tv]), 900 + i * 900));
-    return () => ts.forEach(clearTimeout);
-  }, []);
+    if (!supported) return;
+    let handle;
+    AirPlay.isConnected()
+      .then(({ connected }) => {
+        if (connected) onConnected({ name: "AirPlay display" });
+      })
+      .catch(() => {});
+    AirPlay.addListener("screenConnected", (info) => {
+      onConnected({ name: info?.name || "AirPlay display" });
+    }).then((h) => {
+      handle = h;
+    });
+    return () => handle?.remove();
+  }, [supported, onConnected]);
 
-  useEffect(() => {
-    if (!conn) return;
-    if (step < STEPS.length) {
-      const t = setTimeout(() => setStep((s) => s + 1), 620);
-      return () => clearTimeout(t);
+  const openPicker = async () => {
+    setError(null);
+    setWaiting(true);
+    try {
+      await AirPlay.presentRoutePicker();
+    } catch (e) {
+      setError(e?.message || "Couldn't open the AirPlay picker.");
+      setWaiting(false);
     }
-    const t = setTimeout(() => onConnected(conn), 450);
-    return () => clearTimeout(t);
-  }, [conn, step, onConnected]);
+  };
 
   return (
     <div className="absolute inset-0 z-30 flex flex-col justify-end fade" style={{ background: "rgba(5,6,10,.72)" }}>
@@ -240,9 +204,9 @@ function BeamSheet({ source, onClose, onConnected }) {
         <div className="flex items-start justify-between">
           <div>
             <div className="text-xs tracking-widest" style={{ fontFamily: MONO, color: C.amber }}>
-              {conn ? "PROXIMITY HANDSHAKE" : "SCANNING NEARBY"}
+              AIRPLAY
             </div>
-            <h2 className="text-xl font-semibold mt-1">{conn ? conn.name : "Beam to a TV"}</h2>
+            <h2 className="text-xl font-semibold mt-1">Beam to a TV</h2>
             <p className="text-sm mt-0.5" style={{ color: C.mut }}>
               {source.name} · {source.ids.length} photos
             </p>
@@ -252,62 +216,40 @@ function BeamSheet({ source, onClose, onConnected }) {
           </button>
         </div>
 
-        {!conn && (
-          <>
-            <div className="relative w-36 h-36 mx-auto my-6">
+        <div className="relative w-36 h-36 mx-auto my-6">
+          {waiting && !error && (
+            <>
               <span className="ringA" />
               <span className="ringB" />
-              <span className="absolute inset-0 flex items-center justify-center">
-                <span className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: BEAM, color: "#241204" }}>
-                  <Tv size={26} />
-                </span>
-              </span>
-            </div>
+            </>
+          )}
+          <span className="absolute inset-0 flex items-center justify-center">
+            <span className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: BEAM, color: "#241204" }}>
+              <Tv size={26} />
+            </span>
+          </span>
+        </div>
 
-            <div className="space-y-2">
-              {tvs.length === 0 && (
-                <p className="text-center text-sm" style={{ color: C.mut }}>Looking around the room…</p>
-              )}
-              {tvs.map((tv) => (
-                <button
-                  key={tv.id}
-                  onClick={() => setConn(tv)}
-                  className="rise w-full flex items-center gap-3 rounded-2xl p-3.5 text-left"
-                  style={{ background: C.card2, border: `1px solid ${C.line}` }}
-                >
-                  <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,181,107,.12)", color: C.amber }}>
-                    <Tv size={18} />
-                  </span>
-                  <span className="flex-1">
-                    <span className="block font-medium">{tv.name}</span>
-                    <span className="block text-xs" style={{ color: C.mut }}>{tv.detail}</span>
-                  </span>
-                  <Bars n={tv.bars} />
-                  <ChevronRight size={16} style={{ color: C.mut }} />
-                </button>
-              ))}
-            </div>
-            <p className="text-center text-xs mt-5" style={{ color: C.mut }}>
-              TVs in range pair by proximity — no passwords, no codes on screen.
-            </p>
-          </>
-        )}
-
-        {conn && (
-          <div className="mt-6 rounded-2xl p-4 space-y-3" style={{ background: C.card2, border: `1px solid ${C.line}` }}>
-            {STEPS.map((s, i) => (
-              <div key={s} className="flex items-center gap-3" style={{ opacity: i < step ? 1 : 0.3, transition: "opacity .3s" }}>
-                <span
-                  className="w-6 h-6 rounded-full flex items-center justify-center"
-                  style={{ background: i < step ? C.green : "rgba(255,255,255,.08)", color: "#06240f" }}
-                >
-                  {i < step ? <Check size={14} /> : <Zap size={12} style={{ color: C.mut }} />}
-                </span>
-                <span className="text-sm">{s}</span>
-              </div>
-            ))}
+        {error ? (
+          <div className="flex items-start gap-2 rounded-2xl p-3.5 mb-3" style={{ background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.3)" }}>
+            <AlertCircle size={18} style={{ color: C.red, flexShrink: 0, marginTop: 1 }} />
+            <p className="text-sm" style={{ color: C.text }}>{error}</p>
           </div>
+        ) : (
+          <p className="text-center text-sm mb-3" style={{ color: C.mut }}>
+            {waiting ? "Waiting for the TV to connect…" : "Pick your Apple TV or AirPlay display. Photos start the moment it connects."}
+          </p>
         )}
+
+        <button
+          onClick={openPicker}
+          disabled={!supported}
+          className="w-full flex items-center justify-center gap-2 rounded-2xl py-3.5 font-semibold"
+          style={{ background: supported ? BEAM : C.card2, color: supported ? "#241204" : C.mut }}
+        >
+          {waiting ? <Loader2 size={18} className="spin" /> : <Tv size={18} />}
+          {waiting ? "Searching…" : "Open AirPlay picker"}
+        </button>
       </div>
     </div>
   );
@@ -455,6 +397,14 @@ function Playing({ source, tvName, lookup, onStop }) {
   }, [run, ms, order]);
 
   const p = lookup(order[i]);
+
+  // Push the current photo to the real AirPlay screen. The in-app frame below
+  // mirrors what the TV is showing; the native plugin renders it full-screen.
+  useEffect(() => {
+    if (!isAirPlaySupported() || !p?.img) return;
+    AirPlay.showPhoto({ image: p.img, title: p.t || "" }).catch(() => {});
+  }, [p]);
+
   const step = (d) => setI((x) => (x + d + order.length) % order.length);
   const toggleShuf = () => {
     setOrder(shuf ? source.ids : shuffleArr(source.ids));
@@ -590,13 +540,66 @@ function Playing({ source, tvName, lookup, onStop }) {
   );
 }
 
+// ---------- import source sheet ----------
+function ImportSheet({ onClose, onNative, onSocial }) {
+  const social = SOCIAL_SOURCES.filter((s) => isProviderEnabled(s.key));
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col justify-end fade" style={{ background: "rgba(5,6,10,.72)" }}>
+      <div className="rounded-t-3xl px-5 pt-5 pb-8 rise" style={{ background: C.card, borderTop: `1px solid ${C.line}` }}>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">Import photos</h2>
+          <button onClick={onClose} aria-label="Close" className="p-2 rounded-full" style={{ background: C.card2 }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <button
+          onClick={onNative}
+          className="w-full mt-4 flex items-center gap-3 rounded-2xl p-3.5 text-left"
+          style={{ background: C.card2, border: `1px solid ${C.line}` }}
+        >
+          <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,181,107,.12)", color: C.amber }}>
+            <ImageIcon size={18} />
+          </span>
+          <span className="flex-1">
+            <span className="block font-medium">Photo Library</span>
+            <span className="block text-xs" style={{ color: C.mut }}>From this device</span>
+          </span>
+          <ChevronRight size={16} style={{ color: C.mut }} />
+        </button>
+
+        {social.map(({ key, label, Icon }) => (
+          <button
+            key={key}
+            onClick={() => onSocial(key)}
+            className="w-full mt-2 flex items-center gap-3 rounded-2xl p-3.5 text-left"
+            style={{ background: C.card2, border: `1px solid ${C.line}` }}
+          >
+            <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,181,107,.12)", color: C.amber }}>
+              <Icon size={18} />
+            </span>
+            <span className="flex-1 font-medium">{label}</span>
+            <ChevronRight size={16} style={{ color: C.mut }} />
+          </button>
+        ))}
+
+        {social.length === 0 && (
+          <p className="text-center text-xs mt-4" style={{ color: C.mut }}>
+            Connect Instagram, Facebook, or Google Photos by configuring src/social/config.js (see SOCIAL.md).
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------- app ----------
 export default function App() {
   const [tab, setTab] = useState("library");
   const [sel, setSel] = useState([]); // ordered photo ids
-  const [albums, setAlbums] = useState(SEED_ALBUMS);
+  const [albums, setAlbums] = useState([]);
   const [imported, setImported] = useState([]); // user photos {id,t,img,file,grp}
-  const [sheet, setSheet] = useState(null); // 'beam' | 'save' | {edit: album}
+  const [sheet, setSheet] = useState(null); // 'beam' | 'save' | 'import' | {edit: album}
   const [source, setSource] = useState(null); // { name, ids }
   const [screen, setScreen] = useState("home");
   const [tvName, setTvName] = useState(null);
@@ -605,9 +608,9 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const saveTimer = useRef(null);
 
-  const allPhotos = [...imported, ...SEED_PHOTOS];
+  const allPhotos = imported;
   const lookup = useCallback(
-    (id) => [...imported, ...SEED_PHOTOS].find((p) => p.id === id),
+    (id) => imported.find((p) => p.id === id),
     [imported]
   );
   const GROUPS = [...new Set(allPhotos.map((p) => p.grp))];
@@ -680,6 +683,34 @@ export default function App() {
     if (added.length) setToast(`Imported ${added.length} photo${added.length > 1 ? "s" : ""}`);
   };
 
+  // ----- import photos from a social provider (Instagram / Facebook / Google) -----
+  const importSocial = async (providerKey) => {
+    setSheet(null);
+    setImporting(true);
+    const label = PROVIDERS[providerKey]?.label || providerKey;
+    try {
+      const items = await importFromProvider(providerKey);
+      const added = [];
+      for (const it of items) {
+        try {
+          const id = `${providerKey}-${it.id}`;
+          // Re-encode through the same downscale pipeline as native imports.
+          const dataUrl = await urlToDataUrl(it.dataUrl);
+          const file = await saveImage(id, dataUrl);
+          added.push({ id, t: it.title || label, img: dataUrl, file, grp: label });
+        } catch {
+          // skip unreadable item
+        }
+      }
+      setImported((x) => [...added, ...x]);
+      setToast(added.length ? `Imported ${added.length} from ${label}` : `Nothing to import from ${label}`);
+    } catch (e) {
+      setToast(e?.message || `${label} import failed`);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const toggle = (id) =>
     setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
@@ -693,6 +724,7 @@ export default function App() {
     setScreen("playing");
   };
   const stop = () => {
+    AirPlay.disconnect().catch(() => {});
     setScreen("home");
     setTvName(null);
     setSel([]);
@@ -743,7 +775,7 @@ export default function App() {
                 </p>
               </div>
               <button
-                onClick={importPhotos}
+                onClick={() => setSheet("import")}
                 aria-label="Import photos"
                 className="mt-2 p-3 rounded-2xl"
                 style={{ background: C.card, border: `1px solid ${C.line}`, color: C.amber }}
@@ -759,10 +791,23 @@ export default function App() {
                   <Loader2 size={20} className="spin" />
                 </div>
               ) : tab === "library" ? (
+                allPhotos.length === 0 ? (
+                  <div className="text-center pt-16" style={{ color: C.mut }}>
+                    <ImageIcon size={28} className="mx-auto mb-2" />
+                    <p className="text-sm">No photos yet.</p>
+                    <button
+                      onClick={() => setSheet("import")}
+                      className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold"
+                      style={{ background: BEAM, color: "#241204" }}
+                    >
+                      <ImagePlus size={16} /> Import photos
+                    </button>
+                  </div>
+                ) : (
                 <>
                   {sel.length === 0 && (
                     <p className="px-1 pt-3 text-xs" style={{ color: C.mut }}>
-                      Tap photos in the order you want them to play. Use the import button to add your own.
+                      Tap photos in the order you want them to play. Use the import button to add more.
                     </p>
                   )}
                   {GROUPS.map((g) => (
@@ -778,6 +823,7 @@ export default function App() {
                     </section>
                   ))}
                 </>
+                )
               ) : (
                 <div className="mt-4 space-y-3">
                   {albums.map((a) => (
@@ -890,6 +936,13 @@ export default function App() {
           </>
         )}
 
+        {sheet === "import" && (
+          <ImportSheet
+            onClose={() => setSheet(null)}
+            onNative={() => { setSheet(null); importPhotos(); }}
+            onSocial={importSocial}
+          />
+        )}
         {sheet === "beam" && source && <BeamSheet source={source} onClose={() => setSheet(null)} onConnected={onConnected} />}
         {sheet === "save" && <SaveSheet count={sel.length} onClose={() => setSheet(null)} onSave={saveAlbum} />}
         {sheet?.edit && (

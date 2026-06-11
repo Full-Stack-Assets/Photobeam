@@ -14,12 +14,16 @@ npm install -D @capacitor/cli tailwindcss @tailwindcss/vite
 Set up Tailwind (v4, Vite plugin): add `tailwindcss()` to `vite.config.js`
 plugins and `@import "tailwindcss";` to `src/index.css`.
 
-Then drop in the files from this folder:
+This repo already contains the assembled project (`package.json`, `index.html`,
+`vite.config.js`, `src/`). If you're starting from these files, just run
+`npm install` instead of the scaffold above. The pieces are:
 
-- `src/App.jsx` → replaces the Vite starter App
-- `src/storage.js` → new file
-- `capacitor.config.ts` → project root (edit the `appId` first!)
-- `codemagic.yaml` → project root
+- `src/App.jsx`, `src/main.jsx`, `src/index.css` → the app
+- `src/storage.js` → native storage layer
+- `src/native/` → AirPlay plugin (JS side)
+- `src/social/` → Instagram / Facebook / Google Photos import
+- `native/ios/` → the AirPlay native Swift plugin (added to Xcode in step 2b)
+- `capacitor.config.ts`, `codemagic.yaml` → project root (edit the `appId`/IDs)
 
 ## 2. Pick your bundle ID and generate the iOS project
 
@@ -33,6 +37,19 @@ npx cap add ios
 ```
 
 This creates the `ios/` folder. **Commit it to git** — Codemagic builds from it.
+
+### 2b. Add the native AirPlay plugin
+
+Real AirPlay output is a native Swift plugin. After `npx cap add ios`, add both
+files from `native/ios/` to the **App** target in Xcode (drag them into the
+`App/App` group, or copy them into `ios/App/App/` and add to the target):
+
+- `native/ios/AirPlayPlugin.swift`
+- `native/ios/AirPlayPlugin.m`
+
+Capacitor auto-registers the plugin via the `CAP_PLUGIN` macro — no JS change
+needed. Without these files the app still builds, but the Beam sheet will report
+that AirPlay is unavailable.
 
 ## 3. Add the photo-library permission string
 
@@ -81,15 +98,18 @@ In App Store Connect: add screenshots (take them on your phone), a
 description, the privacy "nutrition label" (declare Photos access, data not
 collected), select the build, and Submit for Review.
 
-## Known gaps to be aware of
+## Social import (optional)
 
-- **TV discovery is simulated.** The Beam sheet shows fake TVs. Real
-  AirPlay/Chromecast output needs a native plugin (e.g. a custom Capacitor
-  plugin around AVRoutePickerView, or `capacitor-airplay` community
-  plugins). Fine for a v1/demo, but App Review may flag it if the listing
-  promises real TV casting — describe it accurately.
-- **Guideline 4.2 (minimum functionality):** native photo import + offline
-  albums help, but the more native the app feels, the safer the review.
+Importing from Instagram / Facebook / Google Photos requires developer apps, a
+small backend, and config — see **SOCIAL.md**. Until configured, those sources
+are hidden and the native Photo Library import works on its own.
+
+## Notes
+
+- **AirPlay is real** (native plugin, step 2b): the Beam sheet opens the system
+  AirPlay picker, and when an Apple TV / AirPlay display connects the slideshow
+  renders on it as a dedicated TV view. It only works on physical hardware —
+  the Simulator and browser report AirPlay as unavailable.
 - **Storage:** imported photos are downscaled to ~1200px JPEGs and stored in
   the app's Data directory, so dozens of imports are fine. Deleting imports
   isn't in the UI yet; if you add it, also call `deleteImage(p.file)` from
