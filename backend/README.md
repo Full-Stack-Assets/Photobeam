@@ -7,33 +7,30 @@ The two endpoints the app's social import needs (see `../SOCIAL.md`):
 - `GET /api/media?url=...` — proxies a provider image back with CORS headers
   (the webview can't read provider CDNs directly).
 
-Zero npm dependencies — uses the Node 18+ global `fetch`. Written for Vercel
-serverless functions (the `api/` directory maps to routes), but the handlers are
-plain `(req, res)` and port easily to Netlify/Cloudflare/Express.
+Zero npm dependencies — uses the Node 18+ global `fetch`. The handlers are plain
+`(req, res)` functions and can be mounted by a Node-compatible serverless host,
+Express adapter, or another runtime with a small request/response adapter.
 
-## Deploy to Vercel
+## Deploy
 
-```bash
-cd backend
-npx vercel            # first run links/creates the project
-npx vercel --prod     # deploy to production
-```
-
-Then set the secrets (Vercel dashboard → Project → Settings → Environment
-Variables, or `npx vercel env add`), using `.env.example` as the list:
+Choose a Node-compatible deployment target and expose the `api/` handlers under
+an `/api` prefix. Configure the secrets from `.env.example` in that runtime:
 `INSTAGRAM_CLIENT_ID/SECRET`, `FACEBOOK_CLIENT_ID/SECRET`,
 `GOOGLE_CLIENT_ID/SECRET`, and optionally `ALLOWED_ORIGIN`. You only need the
 pairs for the providers you actually enable.
 
+No production endpoint is hard-coded in this repository. Verify the selected
+runtime's routing and environment-variable configuration before enabling social
+import.
+
 ## Wire the app to it
 
-Set `backendUrl` in `src/social/config.js` to your deployment's base URL, e.g.
-`https://photobeam-backend.vercel.app`. The app then calls
+Set `backendUrl` in `src/social/config.js` to the deployed API prefix, for
+example `https://api.example.com/api`. The app then calls
 `${backendUrl}/auth/:provider` and `${backendUrl}/media`.
 
-> `vercel.json` rewrites `/auth/:provider` → `/api/auth/:provider` and `/media`
-> → `/api/media`, so the app's clean paths work directly against the base URL —
-> no `/api` prefix needed in `backendUrl`.
+If your runtime exposes different public paths, adapt its routing layer or use a
+small Node/Express wrapper rather than changing the OAuth/media handler logic.
 
 ## Notes
 
