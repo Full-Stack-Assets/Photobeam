@@ -25,7 +25,7 @@ There is no test suite or linter configured.
 - `native/ios/` — the AirPlay **native Swift plugin** (`AirPlayPlugin.swift` +
   `.m`). Not part of the web build; added to the Xcode App target after
   `npx cap add ios` (see `SETUP.md` step 2b).
-- `backend/` — zero-dependency Vercel serverless functions implementing the
+- `backend/` — zero-dependency Node handlers implementing the
   social import contract (`/auth/:provider` token exchange + `/media` image
   proxy). Deployed separately from the app.
 - `capacitor.config.ts`, `codemagic.yaml` — Capacitor config and the CI/TestFlight workflow.
