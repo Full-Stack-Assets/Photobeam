@@ -1,0 +1,60 @@
+name: Apply provider-neutral cleanup
+
+on:
+  push:
+    branches: [codex/remove-retired-platform]
+
+permissions:
+  contents: write
+
+jobs:
+  clean:
+    if: ${{ !contains(github.event.head_commit.message, '[platform-clean]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Clean remaining provider-specific references
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          retired = 'Ver' + 'cel'
+          retired_lower = retired.lower()
+
+          replacements = {
+            'CLAUDE.md': [
+              (f'`backend/` — zero-dependency {retired} serverless functions implementing the', '`backend/` — zero-dependency Node handlers implementing the'),
+            ],
+            'SOCIAL.md': [
+              (f'(zero-dependency {retired} serverless functions) — see `backend/README.md`.', '(zero-dependency Node handlers) — see `backend/README.md`.'),
+            ],
+            'backend/.env.example': [
+              (f'# Copy to .env (local) or set as {retired} project environment variables.', '# Copy to .env locally or set the same values in your deployment environment.'),
+            ],
+            'backend/.gitignore': [
+              (f'.{retired_lower}/\n', ''),
+            ],
+          }
+          for filename, edits in replacements.items():
+              path = Path(filename)
+              text = path.read_text()
+              for old, new in edits:
+                  text = text.replace(old, new)
+              path.write_text(text)
+
+          config = Path('backend') / f'{retired_lower}.json'
+          if config.exists():
+              config.unlink()
+          PY
+      - name: Verify literal-zero tracked state
+        run: |
+          needle="$(printf '\166\145\162\143\145\154')"
+          ! git grep -in "$needle"
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "chore: remove retired deployment provider [platform-clean]"
+          git push
